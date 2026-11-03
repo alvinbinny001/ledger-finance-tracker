@@ -51,6 +51,18 @@ export function formatMoney(value: number) {
   return currency.format(value)
 }
 
+export function currentIndiaDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const value = (type: 'year' | 'month' | 'day') =>
+    parts.find((part) => part.type === type)?.value ?? ''
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
+
 export function summarize(transactions: Transaction[]) {
   let income = 0
   let expense = 0

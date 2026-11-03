@@ -7,6 +7,10 @@ Ledger is a personal finance tracker for recording income and expenses, reviewin
 - Lets users create an account, sign in, and manage their password.
 - Records income and expenses with dates, categories, and optional notes.
 - Shows the balance, income and expenses, category breakdown, and recent monthly cashflow.
+- Supports monthly category budgets with spending progress.
+- Imports bank statement CSVs with an editable preview and duplicate checks.
+- Schedules recurring monthly transactions.
+- Exports transaction CSVs and annual summaries.
 - Stores transaction details encrypted in PostgreSQL.
 - Provides a responsive interface for mobile and desktop.
 
@@ -36,7 +40,7 @@ Password reset pages are available, but reset and password-change notification e
 - `scripts/init-db.mjs` creates the database tables if they do not already exist.
 - `public/` contains the Ledger browser icon and other static assets.
 
-Transaction amounts, categories, and notes are encrypted together in the database. The user ID, transaction type, and date are stored separately and are not encrypted by this payload encryption. This project has not been represented as an independently audited security product.
+Transaction amounts, categories, and notes are encrypted together in the database. The user ID, transaction type, and date are stored separately and are not encrypted by this payload encryption. Budget limits and recurring amounts/notes are encrypted too. The CSV import reads the bank file in the browser; only the reviewed transaction rows are sent to the app. This project has not been represented as an independently audited security product.
 
 ## Run locally
 
@@ -68,7 +72,7 @@ Transaction amounts, categories, and notes are encrypted together in the databas
    corepack pnpm db:init
    ```
 
-   The database user needs permission to create tables. `db:init` uses `DATABASE_URL`.
+   The database user needs permission to create tables. `db:init` prefers `DATABASE_URL_POOLED`, then falls back to `DATABASE_URL`.
 
 6. Start the development server:
 
@@ -84,13 +88,14 @@ Create an account from the sign-up page, then add transactions from the dashboar
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string. Used by the database initializer and as the primary app connection. |
-| `DATABASE_URL_POOLED` | Optional | Alternative pooled PostgreSQL connection string if `DATABASE_URL` is not set by the app. |
+| `DATABASE_URL` | Yes | PostgreSQL connection string. Used if a pooled connection string is not configured. |
+| `DATABASE_URL_POOLED` | Recommended | Pooled PostgreSQL connection string. The app and initializer prefer this when set, which is appropriate for serverless deployments. |
 | `BETTER_AUTH_SECRET` | Yes | Secret used by Better Auth. Generate a unique, random value and keep it private. |
 | `BETTER_AUTH_URL` | Local development | Base URL for the app, such as `http://localhost:3000`. Vercel deployments can derive the URL if this is omitted. |
 | `ENCRYPTION_KEY` | Strongly recommended | Separate, stable secret for transaction encryption. It must be at least 32 characters. Do not rotate it after data has been encrypted unless you have a migration plan. |
 | `RESEND_API_KEY` | Only for email delivery | Secret API key from Resend. |
 | `AUTH_EMAIL_FROM` | Only for email delivery | Sender address on a domain verified with Resend, for example `Ledger <passwords@mail.example.com>`. |
+| `CRON_SECRET` | For recurring transactions | Random secret used by Vercel Cron to authorize the scheduled monthly transaction job. |
 
 Generate random secrets locally with Node.js:
 
@@ -101,6 +106,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 Run this separately for `BETTER_AUTH_SECRET` and `ENCRYPTION_KEY`, and store each value in a password manager or the appropriate environment-variable settings. Never commit secrets.
 
 `ENCRYPTION_KEY` should be kept separate from `BETTER_AUTH_SECRET`. The application has a fallback to the auth secret if the encryption key is absent; configuring a dedicated encryption key avoids coupling encrypted transaction data to auth-secret rotation. If existing data was encrypted using the fallback, changing the effective encryption key will prevent that data from being decrypted.
+
+### First sign-in after inactivity
+
+The first request after a quiet period can take longer because a serverless function may start cold and Neon may resume a suspended compute instance. A pooled connection, module-level connection reuse, and keeping the Vercel function region near the Neon database reduce avoidable connection and network delay. They cannot eliminate cold starts without keeping compute warm, which can add cost. This app shows a longer-wait status rather than silently appearing unresponsive.
 
 ## Password recovery email setup
 
@@ -118,6 +127,20 @@ The password reset flow uses Resend. For real delivery:
    ```
 
 Reset links expire after 30 minutes. Password reset revokes sessions. A password change requires the current password and offers to revoke other sessions.
+
+## Database migration and recurring transactions
+
+The app's database schema includes tables for encrypted monthly budgets and recurring rules. To initialize a local database, `corepack pnpm db:init` creates the base tables and applies the idempotent migration in `scripts/migrations/001-finance-features.sql`.
+
+For an existing production database, apply that SQL once in the Neon SQL Editor before deploying code that uses the new dashboard features. The migration only adds an index and new tables; it does not delete or rewrite existing transactions.
+
+To enable recurring transactions in production:
+
+1. Generate a random secret using the Node.js command above.
+2. Add it as `CRON_SECRET` in the Ledger Vercel project's Production environment variables.
+3. Ensure the repository's `main` branch is connected to that same Vercel project and deploy after the variable and `vercel.json` are in place.
+
+Vercel calls the scheduled endpoint daily. It writes due transactions using an atomic database transaction and advances each rule's next date, so retries do not duplicate an occurrence. Scheduled dates use India Standard Time and days 29–31 fall on the last day in shorter months.
 
 ## Deploy to Vercel
 

@@ -1,10 +1,13 @@
 import {
   boolean,
   date,
+  index,
+  integer,
   pgTable,
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 
 export const user = pgTable('user', {
@@ -65,6 +68,46 @@ export const transactions = pgTable('transactions', {
   payload: text('payload').notNull(),
   occurredAt: date('occurredAt').notNull(),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
+}, (table) => [index('transactions_user_occurred_idx').on(table.userId, table.occurredAt)])
+
+export const budgets = pgTable(
+  'budgets',
+  {
+    id: serial('id').primaryKey(),
+    userId: text('userId')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    category: text('category').notNull(),
+    month: text('month').notNull(),
+    payload: text('payload').notNull(),
+    createdAt: timestamp('createdAt').notNull().defaultNow(),
+    updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('budgets_user_category_month_idx').on(
+      table.userId,
+      table.category,
+      table.month,
+    ),
+  ],
+)
+
+export const recurringTransactions = pgTable(
+  'recurring_transactions',
+  {
+    id: serial('id').primaryKey(),
+    userId: text('userId')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    category: text('category').notNull(),
+    payload: text('payload').notNull(),
+    dayOfMonth: integer('dayOfMonth').notNull(),
+    nextRunDate: date('nextRunDate').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('createdAt').notNull().defaultNow(),
+  },
+  (table) => [index('recurring_transactions_due_idx').on(table.active, table.nextRunDate)],
+)
 
 export type TransactionRow = typeof transactions.$inferSelect

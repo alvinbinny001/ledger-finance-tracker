@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Lock } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,17 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [takingLonger, setTakingLonger] = useState(false)
   const isSignUp = mode === 'sign-up'
+
+  useEffect(() => {
+    if (!pending) {
+      setTakingLonger(false)
+      return
+    }
+    const timer = window.setTimeout(() => setTakingLonger(true), 1800)
+    return () => window.clearTimeout(timer)
+  }, [pending])
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -112,6 +122,13 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           <Button type="submit" size="lg" disabled={pending} className="mt-2">
             {pending ? 'Please wait…' : isSignUp ? 'Create account' : 'Sign in'}
           </Button>
+          {pending && (
+            <p role="status" className="text-center text-xs text-muted-foreground">
+              {takingLonger
+                ? 'Still connecting securely. The service may be waking after inactivity; please keep this page open.'
+                : 'Connecting securely…'}
+            </p>
+          )}
 
           <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <Lock className="size-3" aria-hidden="true" />

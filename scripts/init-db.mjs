@@ -1,13 +1,17 @@
 import { Pool } from 'pg'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
-const connectionString = process.env.DATABASE_URL
+const connectionString = process.env.DATABASE_URL_POOLED || process.env.DATABASE_URL
 if (!connectionString) {
-  throw new Error('DATABASE_URL must be set in .env.local before initializing the database')
+  throw new Error('DATABASE_URL or DATABASE_URL_POOLED must be set before initializing the database')
 }
 
 const pool = new Pool({
   connectionString,
   ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: true },
+  max: 1,
+  connectionTimeoutMillis: 10_000,
 })
 
 async function main() {
@@ -71,6 +75,9 @@ async function main() {
         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `)
+    const migrationUrl = new URL('./migrations/001-finance-features.sql', import.meta.url)
+    const migration = await readFile(fileURLToPath(migrationUrl), 'utf8')
+    await client.query(migration)
     console.log('Database tables initialized successfully!')
   } finally {
     client.release()
